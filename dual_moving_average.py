@@ -22,44 +22,40 @@ its shares once the averages cross again (indicating downwards
 momentum).
 """
 
-from zipline.api import order_target, record, symbol, history, add_history
-
+from zipline.api import order_target, record, symbol, history, add_history,order
+from zipline import TradingAlgorithm
 import matplotlib.pyplot as plt
+import pandas as pd
 def initialize(context):
     # Register 2 histories that track daily prices,
     # one with a 100 window and one with a 300 day window
-    add_history(100, '1d', 'price')
-    add_history(300, '1d', 'price')
-
+    #add_history(100, '1m', 'price')
+    #add_history(300, '1m', 'price')
     context.i = 0
-
+    context.sym = 'Close'
 
 def handle_data(context, data):
     # Skip first 300 days to get full windows
-    context.i += 1
-    if context.i < 300:
-        return
-
+    #print data['Close'].dt
+    #context.i += 1
+    #if context.i < 300:
+    #    return
     # Compute averages
     # history() has to be called with the same params
     # from above and returns a pandas dataframe.
-    short_mavg = history(100, '1d', 'price').mean()
-    long_mavg = history(300, '1d', 'price').mean()
-
-    sym = symbol('AAPL')
-
-    # Trading logic
-    if short_mavg[sym] > long_mavg[sym]:
+    sym = symbol('Close')
+    if data['short_mavg'].price > data['long_mavg'].price:
         # order_target orders as many shares as needed to
         # achieve the desired number of shares.
-        order_target(sym, 100)
-    elif short_mavg[sym] < long_mavg[sym]:
-        order_target(sym, 0)
+        order_target(context.sym, 1000)
+    elif data['short_mavg'].price < data['long_mavg'].price:
+        order_target(context.sym, 0)
+
 
     # Save values for later inspection
-    record(AAPL=data[sym].price,
-           short_mavg=short_mavg[sym],
-           long_mavg=long_mavg[sym])
+    record(Close=data[context.sym].price,
+           short_mavg=data['short_mavg'].price,
+           long_mavg=data['long_mavg'].price)
 
 def analyze(context, perf):
     fig = plt.figure()
@@ -82,3 +78,29 @@ def analyze(context, perf):
     ax2.set_ylabel('price in $')
     plt.legend(loc=0)
     plt.show()
+
+if __name__ == '__main__':
+    import pylab as pl
+    # Read data from yahoo website
+    #start = datetime(2008, 1, 1, 0, 0, 0, 0, pytz.utc)
+    #end = datetime(2010, 1, 1, 0, 0, 0, 0, pytz.utc)
+    #data = load_from_yahoo(stocks=['AAPL'], indexes={}, start=start,end=end)
+    #data = data.dropna()
+    
+    # Read data from csv
+    data = pd.read_csv('EURUSD.csv') # DataFrame
+    data = data.dropna()
+    data.set_index('Date', inplace=True) # set the Date as index
+    data.index = pd.to_datetime(data.index, utc=True) # convert to datetime format
+    print data.head()
+    # Or directly
+    #data = pd.DataFrame.from_csv('AAPL.csv')
+
+    data['short_mavg'] = pd.rolling_mean(data['Close'], 100)
+    data['long_mavg'] = pd.rolling_mean(data['Close'], 300)
+
+    algo = TradingAlgorithm(initialize=initialize,
+                            handle_data=handle_data)
+                            #identifiers=['AAPL'])
+    results = algo.run(data)
+    results.to_csv('EURUSD_DMA.csv')
